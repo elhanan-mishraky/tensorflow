@@ -44,8 +44,7 @@ TEST_F(LocalClientAotTest, Constant) {
   OpaqueData opaque_data{100, 20, 3};
   void* parameters[] = {&opaque_data};
   float out = 0;
-  float tmp = 0;
-  void* temporary_buffers[] = {&out, &tmp, nullptr};
+  void* temporary_buffers[] = {nullptr, &out};
   SumAndDouble(&out, &run_options, parameters, temporary_buffers);
   EXPECT_EQ(out, 246.0f);
 

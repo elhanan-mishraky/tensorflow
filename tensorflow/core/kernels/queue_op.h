@@ -41,6 +41,14 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
                    context->GetAttr("component_types", &component_types_));
   }
 
+  void Compute(OpKernelContext* context) override {
+    ResourceOpKernel<QueueInterface>::Compute(context);
+    mutex_lock l(mu_);
+    if (resource_ && context->track_allocations()) {
+      context->record_persistent_memory_allocation(resource_->MemoryUsed());
+    }
+  }
+
  protected:
   // Variables accessible by subclasses
   int32 capacity_;

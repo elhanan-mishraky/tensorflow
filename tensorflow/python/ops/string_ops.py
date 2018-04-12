@@ -13,30 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Hashing
+"""Operations for working with string Tensors.
 
-String hashing ops take a string input tensor and map each element to an
-integer.
+See the @{$python/string_ops} guide.
 
+@@regex_replace
 @@string_to_hash_bucket_fast
 @@string_to_hash_bucket_strong
 @@string_to_hash_bucket
-
-## Joining
-
-String joining ops concatenate elements of input string tensors to produce a new
-string tensor.
-
 @@reduce_join
 @@string_join
-
-## Splitting
-
 @@string_split
 @@substr
-
-## Conversion
-
 @@as_string
 @@encode_base64
 @@decode_base64
@@ -60,15 +48,17 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
-def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
+@tf_export("string_split")
+def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
   element of `source` based on `delimiter` and return a `SparseTensor`
-  containing the splitted tokens. Empty tokens are ignored.
+  containing the split tokens. Empty tokens are ignored.
 
   If `delimiter` is an empty string, each element of the `source` is split
   into individual strings, each containing one byte. (This includes splitting
@@ -91,6 +81,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     source: `1-D` string `Tensor`, the strings to split.
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
+    skip_empty: A `bool`. If `True`, skip the empty strings from the result.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -103,10 +94,8 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   delimiter = ops.convert_to_tensor(delimiter, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
-  # pylint: disable=protected-access
-  indices, values, shape = gen_string_ops._string_split(
-      source, delimiter=delimiter)
-  # pylint: enable=protected-access
+  indices, values, shape = gen_string_ops.string_split(
+      source, delimiter=delimiter, skip_empty=skip_empty)
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
@@ -132,6 +121,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
+@tf_export("reduce_join")
 def reduce_join(inputs, axis=None,
                 keep_dims=False,
                 separator="",
@@ -150,6 +140,7 @@ def reduce_join(inputs, axis=None,
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
     gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
 
+ops.NotDifferentiable("RegexReplace")
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")
 ops.NotDifferentiable("StringToHashBucketStrong")

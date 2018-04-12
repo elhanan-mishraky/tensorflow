@@ -18,13 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import random
 import threading
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
@@ -106,6 +101,33 @@ def make_example_dict(example_protos, example_weights):
       example_weights=example_weights,
       example_labels=array_ops.reshape(parsed['target'], [-1]),
       example_ids=['%d' % i for i in range(0, len(example_protos))])
+
+
+def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
+  random.seed(1)
+  sparse_features = [
+      SparseFeatureColumn(
+          [int(i / num_non_zero) for i in range(num_examples * num_non_zero)],
+          [int(random.random() * dim) for _ in range(
+              num_examples * num_non_zero)],
+          [num_non_zero**(-0.5) for _ in range(num_examples * num_non_zero)])
+  ]
+  examples_dict = dict(
+      sparse_features=sparse_features,
+      dense_features=[],
+      example_weights=[random.random() for _ in range(num_examples)],
+      example_labels=[
+          1. if random.random() > 0.5 else 0. for _ in range(num_examples)
+      ],
+      example_ids=[str(i) for i in range(num_examples)])
+
+  weights = variables_lib.Variable(
+      array_ops.zeros([dim], dtype=dtypes.float32))
+  variables_dict = dict(
+      sparse_features_weights=[weights],
+      dense_features_weights=[])
+
+  return examples_dict, variables_dict
 
 
 def make_variable_dict(max_age, max_gender):
@@ -241,6 +263,32 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(
             0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
+  def testSparseRandom(self):
+    dim = 20
+    num_examples = 1000
+    # Number of non-zero features per example.
+    non_zeros = 10
+    # Setup test data.
+    with self._single_threaded_test_session():
+      examples, variables = make_random_examples_and_variables_dicts(
+          num_examples, dim, non_zeros)
+      options = dict(
+          symmetric_l2_regularization=.1,
+          symmetric_l1_regularization=0,
+          num_table_shards=1,
+          adaptive=False,
+          loss_type='logistic_loss')
+
+      lr = SdcaModel(examples, variables, options)
+      variables_lib.global_variables_initializer().run()
+      train_op = lr.minimize()
+      for _ in range(4):
+        train_op.run()
+      lr.update_weights(train_op).run()
+      # Duality gap is 1.4e-5.
+      # It would be 0.01 without shuffling and 0.02 with adaptive sampling.
+      self.assertNear(0.0, lr.approximate_duality_gap().eval(), err=1e-3)
+
   def testDistributedSimple(self):
     # Setup test data
     example_protos = [
@@ -276,14 +324,14 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
 
           train_op = lr.minimize()
 
-          def Minimize():
+          def minimize():
             with self._single_threaded_test_session():
               for _ in range(_MAX_ITERATIONS):
-                train_op.run()
+                train_op.run()  # pylint: disable=cell-var-from-loop
 
           threads = []
           for _ in range(num_loss_partitions):
-            threads.append(threading.Thread(target=Minimize))
+            threads.append(threading.Thread(target=minimize))
             threads[-1].start()
 
           for t in threads:
@@ -401,7 +449,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllClose([0, 1, 1, 1], predicted_labels.eval())
         self.assertAllClose(
-            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
+            0.0, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testFractionalExampleLabel(self):
     # Setup test data with 1 positive, and 1 mostly-negative example.
@@ -413,7 +461,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         make_example_proto({
             'age': [1],
             'gender': [1]
-        }, 1),
+        }, 0.9),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
@@ -1064,7 +1112,7 @@ class SdcaFprintTest(SdcaModelTest):
   def testFprint(self):
     with self._single_threaded_test_session():
       in_data = constant_op.constant(['abc', 'very looooooong string', 'def'])
-      out_data = gen_sdca_ops._sdca_fprint(in_data)
+      out_data = gen_sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual([[4143508125394299908, -6879828354153669051],
                            [5849691694103072671, -4874542629849009556],
                            [603227410218889250, 8762207001949257490]],

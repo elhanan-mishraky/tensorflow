@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -120,14 +121,12 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   std::unordered_map<string, string> return_values;
   NodeNameMapping node_names;
 
-  for (Node const* node : graph.nodes()) {
-    if (!node->IsOp()) continue;
-
+  for (Node const* node : graph.op_nodes()) {
     if (node->type_string() == kArgOp) {
       int index;
       DataType type;
-      GetNodeAttr(node->def(), "T", &type);
-      GetNodeAttr(node->def(), "index", &index);
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
       while (fdef->signature().input_arg_size() <= index) {
         fdef->mutable_signature()->add_input_arg();
       }
@@ -143,8 +142,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     if (node->type_string() == kRetValOp) {
       int index;
       DataType type;
-      GetNodeAttr(node->def(), "T", &type);
-      GetNodeAttr(node->def(), "index", &index);
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
       while (fdef->signature().output_arg_size() <= index) {
         fdef->mutable_signature()->add_output_arg();
       }
@@ -153,17 +152,19 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       argdef->set_type(type);
       const string normalized = node_names.Normalize(node->name());
       argdef->set_name(normalized);
-      CHECK_EQ(node->in_edges().size(), 1);
-      Edge const* edge = *node->in_edges().begin();
+      Edge const* edge;
+      TF_CHECK_OK(node->input_edge(0, &edge));
       return_values[normalized] =
           strings::StrCat(edge->src()->name(), ":", edge->src_output());
       continue;
     }
 
     NodeDef* node_def = fdef->add_node_def();
-    node_def->CopyFrom(node->def());
+    *node_def = node->def();
+    if (!node->assigned_device_name().empty()) {
+      node_def->set_device(node->assigned_device_name());
+    }
     node_def->set_name(node_names.Uniquify(node->name()));
-    node_def->clear_device();
 
     // Reset input names based on graph rather than the NodeDef.
     node_def->clear_input();
@@ -185,7 +186,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     }
 
     // Add regular inputs
-    for (int i = 0; i < in_edges.size(); ++i) {
+    for (std::vector<const Edge*>::size_type i = 0; i < in_edges.size(); ++i) {
       const Edge* edge = in_edges[i];
       if (edge == nullptr) {
         return errors::InvalidArgument(
@@ -204,8 +205,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
 
     // Populate tensor_renaming.
     NameRangeMap output_ranges;
-    TF_RETURN_IF_ERROR(NameRangesForNode(node->def(), node->op_def(), nullptr,
-                                         &output_ranges));
+    TF_RETURN_IF_ERROR(
+        NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
       for (int i = output.second.first; i < output.second.second; ++i) {
         const string tensor_name = strings::StrCat(
@@ -229,7 +230,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   for (int n_index = 0; n_index < fdef->node_def_size(); ++n_index) {
     NodeDef* node_def = fdef->mutable_node_def(n_index);
     for (int i = 0; i < node_def->input_size(); ++i) {
-      if (StringPiece(node_def->input(i)).starts_with("^")) {
+      if (str_util::StartsWith(node_def->input(i), "^")) {
         // Control input
         const string normalized =
             node_names.Renormalize(node_def->input(i).substr(1));

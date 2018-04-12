@@ -16,6 +16,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib import distributions
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -25,23 +27,23 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
-ds = distributions
+tfd = distributions
 
 
 class DistributionTest(test.TestCase):
 
   def testParamShapesAndFromParams(self):
     classes = [
-        ds.Normal,
-        ds.Bernoulli,
-        ds.Beta,
-        ds.Chi2,
-        ds.Exponential,
-        ds.Gamma,
-        ds.InverseGamma,
-        ds.Laplace,
-        ds.StudentT,
-        ds.Uniform,
+        tfd.Normal,
+        tfd.Bernoulli,
+        tfd.Beta,
+        tfd.Chi2,
+        tfd.Exponential,
+        tfd.Gamma,
+        tfd.InverseGamma,
+        tfd.Laplace,
+        tfd.StudentT,
+        tfd.Uniform,
     ]
 
     sample_shapes = [(), (10,), (10, 20, 30)]
@@ -63,16 +65,16 @@ class DistributionTest(test.TestCase):
     with self.test_session():
       # Note: we cannot easily test all distributions since each requires
       # different initialization arguments. We therefore spot test a few.
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
+      normal = tfd.Normal(loc=1., scale=2., validate_args=True)
       self.assertEqual(normal.parameters, normal.copy().parameters)
-      wishart = ds.WishartFull(df=2, scale=[[1., 2], [2, 5]],
-                               validate_args=True)
+      wishart = tfd.WishartFull(df=2, scale=[[1., 2], [2, 5]],
+                                validate_args=True)
       self.assertEqual(wishart.parameters, wishart.copy().parameters)
 
   def testCopyOverride(self):
     with self.test_session():
-      normal = ds.Normal(mu=1., sigma=2., validate_args=True)
-      normal_copy = normal.copy(validate_args=False)
+      normal = tfd.Normal(loc=1., scale=2., validate_args=True)
+      unused_normal_copy = normal.copy(validate_args=False)
       base_params = normal.parameters.copy()
       copy_params = normal.copy(validate_args=False).parameters.copy()
       self.assertNotEqual(
@@ -84,19 +86,19 @@ class DistributionTest(test.TestCase):
       mu = 1.
       sigma = 2.
 
-      normal = ds.Normal(mu, sigma, validate_args=True)
+      normal = tfd.Normal(mu, sigma, validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_batch()))
 
-      normal = ds.Normal([mu], [sigma], validate_args=True)
+      normal = tfd.Normal([mu], [sigma], validate_args=True)
       self.assertTrue(tensor_util.constant_value(normal.is_scalar_event()))
       self.assertFalse(tensor_util.constant_value(normal.is_scalar_batch()))
 
-      mvn = ds.MultivariateNormalDiag([mu], [sigma], validate_args=True)
+      mvn = tfd.MultivariateNormalDiag([mu], [sigma], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
       self.assertTrue(tensor_util.constant_value(mvn.is_scalar_batch()))
 
-      mvn = ds.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
+      mvn = tfd.MultivariateNormalDiag([[mu]], [[sigma]], validate_args=True)
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_event()))
       self.assertFalse(tensor_util.constant_value(mvn.is_scalar_batch()))
 
@@ -106,50 +108,54 @@ class DistributionTest(test.TestCase):
       # Test case 1, 2.
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
       # None would fire an exception were it actually executed.
-      self.assertTrue(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertTrue(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertTrue(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       # None would fire an exception were it actually executed.
-      self.assertFalse(normal._is_scalar_helper(x.get_shape, lambda: None))
+      self.assertFalse(normal._is_scalar_helper(x.get_shape(), lambda: None))
       self.assertFalse(
-          normal._is_scalar_helper(lambda: tensor_shape.TensorShape(None),
+          normal._is_scalar_helper(tensor_shape.TensorShape(None),
                                    lambda: array_ops.shape(x)))
 
       # Test case 3.
       x = array_ops.placeholder(dtype=dtypes.int32)
-      is_scalar = normal._is_scalar_helper(x.get_shape,
+      is_scalar = normal._is_scalar_helper(x.get_shape(),
                                            lambda: array_ops.shape(x))
       self.assertTrue(is_scalar.eval(feed_dict={x: 1}))
       self.assertFalse(is_scalar.eval(feed_dict={x: [1]}))
 
-  def testSampleShapeHints(self):
-    class _FakeDistribution(ds.Distribution):
+  def _GetFakeDistribution(self):
+    class FakeDistribution(tfd.Distribution):
       """Fake Distribution for testing _set_sample_static_shape."""
 
       def __init__(self, batch_shape=None, event_shape=None):
         self._static_batch_shape = tensor_shape.TensorShape(batch_shape)
         self._static_event_shape = tensor_shape.TensorShape(event_shape)
-        super(_FakeDistribution, self).__init__(
+        super(FakeDistribution, self).__init__(
             dtype=dtypes.float32,
-            is_continuous=False,
-            is_reparameterized=False,
+            reparameterization_type=distributions.NOT_REPARAMETERIZED,
             validate_args=True,
             allow_nan_stats=True,
             name="DummyDistribution")
 
-      def _get_batch_shape(self):
+      def _batch_shape(self):
         return self._static_batch_shape
 
-      def _get_event_shape(self):
+      def _event_shape(self):
         return self._static_event_shape
+
+    return FakeDistribution
+
+  def testSampleShapeHints(self):
+    fake_distribution = self._GetFakeDistribution()
 
     with self.test_session():
       # Make a new session since we're playing with static shapes. [And below.]
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[2, 3], event_shape=[5])
+      dist = fake_distribution(batch_shape=[2, 3], event_shape=[5])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       # We use as_list since TensorShape comparison does not work correctly for
@@ -158,31 +164,130 @@ class DistributionTest(test.TestCase):
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=[5])
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=[5])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, 5], y.get_shape().as_list())
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=[None])
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=[None])
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertAllEqual([6, 7, None, 3, None], y.get_shape().as_list())
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=None, event_shape=None)
+      dist = fake_distribution(batch_shape=None, event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
 
     with self.test_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
-      dist = _FakeDistribution(batch_shape=[None, 3], event_shape=None)
+      dist = fake_distribution(batch_shape=[None, 3], event_shape=None)
       sample_shape = ops.convert_to_tensor([6, 7], dtype=dtypes.int32)
       y = dist._set_sample_static_shape(x, sample_shape)
       self.assertTrue(y.get_shape().ndims is None)
+
+  def testStrWorksCorrectlyScalar(self):
+    normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
+    self.assertEqual(
+        ("tf.distributions.Normal("
+         "\"Normal\", "
+         "batch_shape=(), "
+         "event_shape=(), "
+         "dtype=float16)"),  # Got the dtype right.
+        str(normal))
+
+    chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
+    self.assertEqual(
+        ("tf.distributions.Chi2("
+         "\"silly\", "  # What a silly name that is!
+         "batch_shape=(2,), "
+         "event_shape=(), "
+         "dtype=float32)"),
+        str(chi2))
+
+    exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
+    self.assertEqual(
+        ("tf.distributions.Exponential(\"Exponential\", "
+         # No batch shape.
+         "event_shape=(), "
+         "dtype=float32)"),
+        str(exp))
+
+  def testStrWorksCorrectlyMultivariate(self):
+    mvn_static = tfd.MultivariateNormalDiag(
+        loc=np.zeros([2, 2]), name="MVN")
+    self.assertEqual(
+        ("tf.distributions.MultivariateNormalDiag("
+         "\"MVN\", "
+         "batch_shape=(2,), "
+         "event_shape=(2,), "
+         "dtype=float64)"),
+        str(mvn_static))
+
+    mvn_dynamic = tfd.MultivariateNormalDiag(
+        loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
+        name="MVN2")
+    self.assertEqual(
+        ("tf.distributions.MultivariateNormalDiag("
+         "\"MVN2\", "
+         "batch_shape=(?,), "  # Partially known.
+         "event_shape=(3,), "
+         "dtype=float32)"),
+        str(mvn_dynamic))
+
+  def testReprWorksCorrectlyScalar(self):
+    normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
+    self.assertEqual(
+        ("<tf.distributions.Normal"
+         " 'Normal'"
+         " batch_shape=()"
+         " event_shape=()"
+         " dtype=float16>"),  # Got the dtype right.
+        repr(normal))
+
+    chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
+    self.assertEqual(
+        ("<tf.distributions.Chi2"
+         " 'silly'"  # What a silly name that is!
+         " batch_shape=(2,)"
+         " event_shape=()"
+         " dtype=float32>"),
+        repr(chi2))
+
+    exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
+    self.assertEqual(
+        ("<tf.distributions.Exponential"
+         " 'Exponential'"
+         " batch_shape=<unknown>"
+         " event_shape=()"
+         " dtype=float32>"),
+        repr(exp))
+
+  def testReprWorksCorrectlyMultivariate(self):
+    mvn_static = tfd.MultivariateNormalDiag(
+        loc=np.zeros([2, 2]), name="MVN")
+    self.assertEqual(
+        ("<tf.distributions.MultivariateNormalDiag"
+         " 'MVN'"
+         " batch_shape=(2,)"
+         " event_shape=(2,)"
+         " dtype=float64>"),
+        repr(mvn_static))
+
+    mvn_dynamic = tfd.MultivariateNormalDiag(
+        loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
+        name="MVN2")
+    self.assertEqual(
+        ("<tf.distributions.MultivariateNormalDiag"
+         " 'MVN2'"
+         " batch_shape=(?,)"  # Partially known.
+         " event_shape=(3,)"
+         " dtype=float32>"),
+        repr(mvn_dynamic))
 
 
 if __name__ == "__main__":

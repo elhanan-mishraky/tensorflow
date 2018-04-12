@@ -33,12 +33,12 @@ namespace tensorflow {
 // xla::ComputationBuilder.
 class XlaReductionOp : public XlaOpKernel {
  public:
-  explicit XlaReductionOp(OpKernelConstruction* ctx);
+  XlaReductionOp(OpKernelConstruction* ctx, DataType reduction_type);
   ~XlaReductionOp() override {}
 
-  // Return the base case for the reduction. Defaults to zero.
+  // Return the base case for the reduction.
   virtual xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder);
+      xla::ComputationBuilder* builder) = 0;
 
   // Implement the (scalar,scalar)->scalar lambda that should be
   // applied to each pair of elements to be reduced. The desired
@@ -48,22 +48,24 @@ class XlaReductionOp : public XlaOpKernel {
                             const xla::ComputationDataHandle& scalar_lhs,
                             const xla::ComputationDataHandle& scalar_rhs) = 0;
 
-  // Implement the scalar->scalar lambda that should be applied to
-  // each element to be finalized. The desired computation should be
-  // added to 'builder' and 'scalar_argument' is the function's
-  // input. 'num_elements_reduced' is the number of elements that contributed
-  // to the reduction. If the reduction has a finalizer return true, otherwise
-  // return false and any computation added to builder will be
-  // ignored. Defaults to return false.
-  virtual bool BuildFinalizer(xla::ComputationBuilder* builder,
-                              const xla::ComputationDataHandle& scalar_argument,
-                              int64 num_elements_reduced);
+  // Applies a transformation to the output of the reduction. The desired
+  // computation should be added to 'builder'. Argument 'reduce_output' is the
+  // output of the reduction. 'num_elements_reduced' is the number of elements
+  // that contributed to the reduction. Returns the transformed reduction
+  // output, Defaults to returning 'reduce_output' unchanged.
+  virtual xla::ComputationDataHandle BuildFinalizer(
+      xla::ComputationBuilder* builder,
+      const xla::ComputationDataHandle& reduce_output,
+      int64 num_elements_reduced);
 
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
   // True if the number of dimensions should be maintained.
   bool keep_dims_;
+
+ protected:
+  DataType reduction_type_;
 };
 
 }  // namespace tensorflow

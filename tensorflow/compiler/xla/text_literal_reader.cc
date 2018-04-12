@@ -38,7 +38,7 @@ namespace xla {
 
 StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
     tensorflow::StringPiece path) {
-  CHECK(!path.ends_with(".gz"))
+  CHECK(!tensorflow::str_util::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   Status s =
@@ -102,10 +102,9 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape).c_str());
   }
 
-  auto result = MakeUnique<Literal>();
+  auto result = MakeUnique<Literal>(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
-  LiteralUtil::PopulateWithValue<float>(fill, AsInt64Slice(shape.dimensions()),
-                                        result.get());
+  result->PopulateWithValue<float>(fill);
   std::vector<tensorflow::StringPiece> pieces;
   std::vector<tensorflow::StringPiece> coordinates;
   std::vector<int64> coordinate_values;
@@ -116,7 +115,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
     tensorflow::StringPiece value_string = pieces[1];
     tensorflow::str_util::RemoveWhitespaceContext(&coordinates_string);
     tensorflow::str_util::RemoveWhitespaceContext(&value_string);
-    if (!coordinates_string.Consume("(")) {
+    if (!tensorflow::str_util::ConsumePrefix(&coordinates_string, "(")) {
       return InvalidArgument(
           "expected '(' at the beginning of coordinates: \"%s\"", line.c_str());
     }
@@ -147,7 +146,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
           "\"%s\"",
           shape.dimensions_size(), coordinate_values.size(), line.c_str());
     }
-    LiteralUtil::Set<float>(result.get(), coordinate_values, value);
+    result->Set<float>(coordinate_values, value);
   }
   return std::move(result);
 }

@@ -5,23 +5,24 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
+DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
-Empty
 ExpandDims
-InplaceUpdate
-InplaceAdd
-InplaceSubtract
 ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot
 Pack
 Pad
+PadV2
 ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -29,6 +30,10 @@ Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
+Unique
+UniqueV2
+UniqueWithCounts
+UniqueWithCountsV2
 Unpack
 
 # candidate_sampling_ops
@@ -39,6 +44,11 @@ LearnedUnigramCandidateSampler
 LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
+
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 
 # control_flow_ops
 Switch
@@ -64,18 +74,30 @@ FakeQueue
 FIFOQueue
 FIFOQueueV2
 GetSessionHandle
+GetSessionHandleV2
 GetSessionTensor
 HashTable
+HashTableV2
 InitializeTable
+InitializeTableV2
 InitializeTableFromTextFile
+InitializeTableFromTextFileV2
 LookupTableExport
+LookupTableExportV2
 LookupTableFind
+LookupTableFindV2
 LookupTableImport
+LookupTableImportV2
 LookupTableInsert
+LookupTableInsertV2
 LookupTableSize
+LookupTableSizeV2
 MutableDenseHashTable
+MutableDenseHashTableV2
 MutableHashTable
+MutableHashTableV2
 MutableHashTableOfTensors
+MutableHashTableOfTensorsV2
 Mutex
 MutexAcquire
 MutexRelease
@@ -103,6 +125,10 @@ Stack
 StackClose
 StackPop
 StackPush
+StackV2
+StackCloseV2
+StackPopV2
+StackPushV2
 TensorArray
 TensorArrayClose
 TensorArrayCloseV2
@@ -144,17 +170,20 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
+AdjustContrastv2
+NonMaxSuppression
+NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
-AdjustContrastv2
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 ScaleImageGrad
 
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -165,8 +194,6 @@ ReaderSerializeState
 ReaderWorkQueueLength
 FixedLengthRecordReaderV2
 IdentityReaderV2
-ReaderCloseV2
-ReaderEnqueueWorkV2
 ReaderNumRecordsProducedV2
 ReaderNumWorkUnitsCompletedV2
 ReaderReadV2
@@ -187,6 +214,8 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -199,6 +228,9 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
+MatrixExponential
+MatrixLogarithm
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -208,17 +240,19 @@ Svd
 Assert
 AudioSummary
 AudioSummaryV2
-HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary
 MergeSummary
 Print
 ScalarSummary
 TensorSummary
+TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul
@@ -228,15 +262,19 @@ BatchFFT3D
 BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
+Bucketize
+ClipByValue
 Complex
 ComplexAbs
 Conj
 FloorDiv
 FloorMod
+HistogramFixedWidth
 Max
 Mean
 Min
 Mul
+Neg
 Pow
 Prod
 Range
@@ -259,17 +297,24 @@ TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
+AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
 MaxPoolGrad
 MaxPoolGradWithArgmax
+MaxPoolGradGrad
+MaxPoolGradGradWithArgmax
+MaxPool3DGrad
+MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -279,10 +324,13 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
+InTopK
+InTopKV2
 
 # parsing_ops
 ParseExample
@@ -290,6 +338,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle
@@ -300,11 +349,9 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
-SdcaFprint
-SdcaOptimizer
-SdcaShrinkL1
 
 # state_ops
 Variable
@@ -317,11 +364,15 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd
 SparseAddGrad
 SparseConcat
+SparseCross
+SparseFillEmptyRows
+SparseFillEmptyRowsGrad
 SparseSplit
 SparseSelectLastK
 SparseReorder

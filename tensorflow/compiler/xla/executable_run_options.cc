@@ -67,4 +67,31 @@ const Eigen::ThreadPoolDevice* ExecutableRunOptions::intra_op_thread_pool()
   return intra_op_thread_pool_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_execution_profile(
+    ExecutionProfile* profile) {
+  execution_profile_ = profile;
+  return *this;
+}
+
+ExecutionProfile* ExecutableRunOptions::execution_profile() const {
+  return execution_profile_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
+    DeviceAssignment* device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
+const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
+  return device_assignment_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
+  rng_seed_ = rng_seed;
+  return *this;
+}
+
+int ExecutableRunOptions::rng_seed() const { return rng_seed_; }
+
 }  // namespace xla

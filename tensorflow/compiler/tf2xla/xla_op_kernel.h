@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
@@ -45,9 +46,14 @@ class XlaOpKernel : public OpKernel {
 // XlaOpKernelContext is a variant of the standard OpKernel class, tailored for
 // implementing operators that perform symbolic execution as part of the XLA
 // compiler. The key difference is that XlaOpKernelContext produces and consumes
-// data as XLA computations, rather than as standard Tensors. (Under the hood,
-// symbolic execution communicates using special Tensors, but that is an
-// implementation detail that this class hides.)
+// data as XLA computations, rather than as standard Tensors.
+//
+// Under the hood, symbolic execution communicates using special Tensors that
+// wrap XlaExpression objects, however this is an implementation detail that
+// this class hides. The *only* correct way to allocate a Tensor during
+// compilation is using the XlaOpKernelContext methods, since they ensure there
+// is a valid XlaExpression backing the tensor. No Op should ever call
+// allocate_output or allocate_temp directly on the underlying OpKernelContext.
 class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
@@ -98,8 +104,17 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
+  // Converts a constant scalar int32 or int64 tensor into an int64.
+  Status ConstantInputAsIntScalar(int index, int64* out);
+
+  // Converts a constant scalar float32 or float64 tensor into a float64.
+  Status ConstantInputAsFloatScalar(int index, double* out);
+
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
+
+  // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
+  Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
 
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
@@ -127,20 +142,50 @@ class XlaOpKernelContext {
   // SetConstantOutput where possible.
   void SetConstantOutput(int index, const Tensor& host_tensor);
 
+  // Sets output 'index' to an invalid value.
+  // Any subsequent attempt to consume this output will cause an error.
+  void SetInvalidOutput(int index);
+
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
 
-  // Mark the op has having side effects (i.e., via Send).
-  void SetOpHasSideEffects();
+  // Variables
+
+  // Sets '*resource' to the resource associated with input `index`.
+  Status GetResourceInput(int index, XlaResource** resource);
+
+  // Sets output 'index' to be a reference to resource 'resource'.
+  void SetResourceOutput(int index, XlaResource* resource);
+
+  // Sets `*type` and `*shape` to the current type and shape of a variable's
+  // value.
+  Status GetVariableTypeAndShape(int index, DataType* type,
+                                 TensorShape* shape) const;
+
+  // Reads the current value of the resouce variable referred to by input
+  // 'index'. If `shape` is not nullptr, sets `*shape` to the shape of the
+  // variable. Returns an error if the variable has not been initialized, or if
+  // its type does not match `type`.
+  Status ReadVariableInput(int index, DataType type, TensorShape* shape,
+                           xla::ComputationDataHandle* value);
+
+  // Assigns the value `handle` to the variable referenced by input
+  // `input_index`. The variable must be of `type`. Returns an error if the
+  // variable has been initialized with a different type or with a
+  // different shape.
+  Status AssignVariable(int input_index, DataType type,
+                        xla::ComputationDataHandle handle);
 
   // Helper routines for the OP_REQUIRES macros
-  void CtxFailure(Status s);
-  void CtxFailureWithWarning(Status s);
+  void CtxFailure(const Status& s);
+  void CtxFailureWithWarning(const Status& s);
+  void CtxFailure(const char* file, int line, const Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const Status& s);
 
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.
-  FunctionCallFrame* call_frame() const { return context_->call_frame(); }
+  CallFrameInterface* call_frame() const { return context_->call_frame(); }
 
   FunctionLibraryRuntime* function_library() const {
     return context_->function_library();
@@ -151,22 +196,31 @@ class XlaOpKernelContext {
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
 
+  // Returns the XlaCompiler that is performing the compilation. Used for, e.g.,
+  // While to compile nested computations.
+  XlaCompiler* compiler() const;
+
   // TODO(phawkins): find a better home for these helpers.
 
-  // Get an XLA lambda to compute Max. This is cached in the
+  // Gets an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
 
-  // Get an XLA lambda to compute Add. This is cached in the
+  // Gets an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
+
+  // Gets an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
 
-  // Get an XLA lambda to compute Sigmoid. This is cached in the
+  // Gets an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateSigmoid(const DataType type);
+  const xla::Computation* GetOrCreateMul(const DataType type);
 
  private:
   OpKernelContext* const context_;

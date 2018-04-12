@@ -22,10 +22,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-WhileThunk::WhileThunk(BufferAllocation::Index condition_result_buffer_index,
-                       std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-                       std::unique_ptr<ThunkSequence> body_thunk_sequence,
-                       const HloInstruction* hlo)
+WhileThunk::WhileThunk(
+    const BufferAllocation::Slice& condition_result_buffer_index,
+    std::unique_ptr<ThunkSequence> condition_thunk_sequence,
+    std::unique_ptr<ThunkSequence> body_thunk_sequence,
+    const HloInstruction* hlo)
     : Thunk(Kind::kWhile, hlo),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_thunk_sequence_(MakeUnique<SequentialThunk>(
@@ -33,16 +34,14 @@ WhileThunk::WhileThunk(BufferAllocation::Index condition_result_buffer_index,
       body_thunk_sequence_(
           MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
 
-tensorflow::Status WhileThunk::Initialize(const GpuExecutable& executable) {
+Status WhileThunk::Initialize(const GpuExecutable& executable) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(executable));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status WhileThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
-
+Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                   perftools::gputools::Stream* stream) {
   perftools::gputools::DeviceMemoryBase condition_result_data =
       buffer_allocations.GetDeviceAddress(condition_result_buffer_index_);
 
@@ -54,9 +53,11 @@ tensorflow::Status WhileThunk::ExecuteOnStream(
     // Copy the result of condition computation and break the loop if 'false'.
     bool condition_result;
     stream->ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
-    if (!stream->BlockHostUntilDone()) {
+    Status block_status = stream->BlockHostUntilDone();
+    if (!block_status.ok()) {
       return InternalError(
-          "Failed to complete all kernels launched on stream %p", stream);
+          "Failed to complete all kernels launched on stream %p: %s", stream,
+          block_status.error_message().c_str());
     }
 
     if (!condition_result) {
@@ -67,7 +68,7 @@ tensorflow::Status WhileThunk::ExecuteOnStream(
     TF_RETURN_IF_ERROR(
         body_thunk_sequence_->ExecuteOnStream(buffer_allocations, stream));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

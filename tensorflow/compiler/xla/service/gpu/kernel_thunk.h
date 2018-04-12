@@ -46,13 +46,15 @@ class KernelThunk : public Thunk {
   // Constructs a thunk for the given kernel.
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Index> io_buffers,
-              const string& kernel_name, const HloInstruction* hlo_instruction);
+  KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
+              const string& kernel_name, const HloInstruction* hlo_instruction,
+              int unroll_factor);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   const string& kernel_name() const { return kernel_name_; }
+  int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
   tensorflow::Status Initialize(const GpuExecutable& executable) override;
@@ -63,11 +65,15 @@ class KernelThunk : public Thunk {
       perftools::gputools::Stream* stream) override;
 
  private:
-  // The indices of the input/output buffers.
-  const std::vector<BufferAllocation::Index> io_buffers_;
+  // Buffers passed to the kernel as arguments.
+  const std::vector<const BufferAllocation*> args_;
 
   // Entry kernel name for the computation.
   const string kernel_name_;
+
+  // The number of times this kernel should be unrolled. This works as a
+  // multiplier on the number of elements produced by a GPU thread.
+  const int unroll_factor_;
 
   // The thread and block dimension used to launch the kernel.
   // Will be set by IrEmitterUnnested.
@@ -78,6 +84,11 @@ class KernelThunk : public Thunk {
   mutable tensorflow::mutex mutex_;
   std::unique_ptr<perftools::gputools::MultiKernelLoaderSpec> loader_spec_
       GUARDED_BY(mutex_);
+
+  // Loaded kernels for each `StreamExecutor`
+  std::unordered_map<perftools::gputools::StreamExecutor*,
+                     perftools::gputools::KernelBase>
+      kernel_cache_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

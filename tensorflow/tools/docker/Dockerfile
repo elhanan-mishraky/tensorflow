@@ -1,6 +1,6 @@
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
-MAINTAINER Craig Citro <craigcitro@google.com>
+LABEL maintainer="Craig Citro <craigcitro@google.com>"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,13 +24,15 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        Pillow \
+        h5py \
         ipykernel \
         jupyter \
         matplotlib \
         numpy \
+        pandas \
         scipy \
         sklearn \
-        Pillow \
         && \
     python -m ipykernel.kernelspec
 
@@ -45,7 +47,7 @@ RUN pip --no-cache-dir install \
     http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.0.0-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 
-# RUN ln -s /usr/bin/python3 /usr/bin/python#
+# RUN ln -s -f /usr/bin/python3 /usr/bin/python#
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
@@ -65,4 +67,4 @@ EXPOSE 8888
 
 WORKDIR "/notebooks"
 
-CMD ["/run_jupyter.sh"]
+CMD ["/run_jupyter.sh", "--allow-root"]

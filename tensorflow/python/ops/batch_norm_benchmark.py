@@ -25,6 +25,7 @@ import time
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients_impl
@@ -32,17 +33,17 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
 def batch_norm_op(tensor, mean, variance, beta, gamma, scale):
   """Fused kernel for batch normalization."""
   # _batch_norm_with_global_normalization is deprecated in v9
-  ops.get_default_graph().graph_def_versions.producer = 8
+  test_util.set_producer_version(ops.get_default_graph(), 8)
   # pylint: disable=protected-access
-  return gen_nn_ops._batch_norm_with_global_normalization(tensor, mean,
-                                                          variance, beta, gamma,
-                                                          0.001, scale)
+  return gen_nn_ops._batch_norm_with_global_normalization(
+      tensor, mean, variance, beta, gamma, 0.001, scale)
   # pylint: enable=protected-access
 
 
@@ -94,7 +95,11 @@ def build_graph(device, input_shape, axes, num_layers, mode, scale, train):
   with ops.device("/%s:0" % device):
     tensor = variables.Variable(random_ops.truncated_normal(input_shape))
     for _ in range(num_layers):
-      mean, variance = nn_impl.moments(tensor, axes, keep_dims=keep_dims)
+      if train:
+        mean, variance = nn_impl.moments(tensor, axes, keep_dims=keep_dims)
+      else:
+        mean = array_ops.zeros(moment_shape)
+        variance = array_ops.ones(moment_shape)
       beta = variables.Variable(array_ops.zeros(moment_shape))
       gamma = variables.Variable(constant_op.constant(1.0, shape=moment_shape))
       if mode == "py":
@@ -193,7 +198,7 @@ class BatchNormBenchmark(test.Benchmark):
     if FLAGS.use_gpu:
       t1 = self._run_graph("gpu", shape, axes, 10, "op", True, True, 50)
       t2 = self._run_graph("gpu", shape, axes, 10, "py", True, True, 50)
-      t2 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
+      t3 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
       print_difference("op vs py", t1, t2)
       print_difference("py vs slow", t2, t3)
     print("Forward convolution (higher layers).")
